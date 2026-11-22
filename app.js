@@ -1,4 +1,4 @@
-const FREE_DEBTS = 5, FREE_SENDS = 10, PRO_PRICE = 18, OWNER_WA = '34691465432', CODE_SALT = 'cz-9f3a71b2e4';
+const FREE_DEBTS = 5, FREE_SENDS = 10, OWNER_WA = '34691465432', CODE_SALT = 'cz-9f3a71b2e4';
 function cyrb53(s) {
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
@@ -266,14 +266,16 @@ $('rate').addEventListener('input', () => {
 $('btn-rate').onclick = () => fetchRate(true);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) fetchRate(); });
 $('btn-buy-pro').onclick = () => {
-  const msg = `Hola, quiero activar CobraZap Pro (${'$' + PRO_PRICE}/mes). Mi ID de dispositivo: ${settings.deviceId}. Envíame los datos de pago.`;
+  const plan = $('pro-plan').selectedOptions[0].textContent;
+  const msg = `Hola, quiero activar CobraZap Pro: ${plan}. Mi ID de dispositivo: ${settings.deviceId}. Envíame los datos de pago.`;
   window.open(`https://wa.me/${OWNER_WA}?text=${encodeURIComponent(msg)}`, '_blank');
 };
 $('btn-activate').onclick = () => {
   const code = $('pro-code').value.replace(/\D/g, '');
   const month = new Date().toISOString().slice(0, 7);
-  if (code !== proCode(settings.deviceId, month)) return toast('Código inválido o de otro mes');
-  settings.proUntil = new Date(Date.now() + 31 * 864e5).toISOString().slice(0, 10);
+  const days = code === proCode(settings.deviceId, month) ? 31 : code === proCode(settings.deviceId, month + 'A') ? 365 : 0;
+  if (!days) return toast('Código inválido o de otro mes');
+  settings.proUntil = new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
   save('settings', settings); $('pro-code').value = ''; render(); toast('Pro activado hasta ' + settings.proUntil);
 };
 $('btn-export').onclick = () => {

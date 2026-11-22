@@ -81,7 +81,14 @@
     <div class="row"><button id="btn-share-pay">Compartir mis datos de pago</button><button id="btn-copy-pay">Copiar</button></div>
     <h3>Plan</h3>
     <p id="plan-state" class="muted"></p>
-    <p class="muted">CobraZap Pro: sin límites, $18/mes. Tu ID de dispositivo: <b id="device-id"></b></p>
+    <p class="muted">CobraZap Pro: sin límites. Tu ID de dispositivo: <b id="device-id"></b></p>
+    <label>Plan
+      <select id="pro-plan">
+        <option>Oferta de lanzamiento: $3/mes (primeros 3 meses)</option>
+        <option selected>Mensual: $5/mes</option>
+        <option>Anual: $45/año (3 meses gratis)</option>
+      </select>
+    </label>
     <button id="btn-buy-pro" class="primary">Solicitar Pro por WhatsApp</button>
     <label>Código de activación <input id="pro-code" inputmode="numeric" placeholder="8 dígitos"></label>
     <button id="btn-activate">Activar</button>
