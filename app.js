@@ -166,7 +166,31 @@ $('btn-save-settings').onclick = () => {
   settings.tpls[settings.tpl] = $('s-tpl-text').value;
   save('settings', settings); render(); toast('Ajustes guardados');
 };
-$('rate').addEventListener('input', () => { settings.rate = parseFloat($('rate').value) || 0; save('settings', settings); render(); });
+function rateInfo() {
+  const f = settings.rateDate ? new Date(settings.rateDate + 'T12:00:00').toLocaleDateString('es-VE') : '';
+  $('rate-info').textContent = settings.rateManual ? 'Tasa manual' : (settings.rateDate ? `Tasa oficial BCV · ${f}` : 'Sin tasa: escríbela o pulsa ↻');
+}
+async function fetchRate(force) {
+  if (!force && settings.rateManual) return;
+  if (!force && settings.rateCheck === today() && settings.rate) return;
+  try {
+    const r = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', { cache: 'no-store' });
+    const j = await r.json();
+    const v = Number(j.promedio);
+    if (!(v > 0)) throw new Error('tasa inválida');
+    Object.assign(settings, { rate: v, rateManual: false, rateCheck: today(), rateDate: String(j.fechaActualizacion).slice(0, 10) });
+    save('settings', settings); $('rate').value = v; render(); rateInfo();
+    if (force) toast('Tasa BCV actualizada');
+  } catch {
+    if (force) toast('No se pudo actualizar. Usando la última tasa guardada');
+    rateInfo();
+  }
+}
+$('rate').addEventListener('input', () => {
+  settings.rate = parseFloat($('rate').value) || 0; settings.rateManual = true; save('settings', settings); render(); rateInfo();
+});
+$('btn-rate').onclick = () => fetchRate(true);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) fetchRate(); });
 $('btn-pro').onclick = () => { settings.pro = !settings.pro; save('settings', settings); render(); toast(settings.pro ? 'Pro activado (modo prueba, sin pago)' : 'Plan gratis'); };
 $('btn-export').onclick = () => {
   const a = document.createElement('a');
@@ -180,5 +204,5 @@ function showTab(t) {
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
-fillSettings(); render();
+fillSettings(); render(); rateInfo(); fetchRate();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js');
