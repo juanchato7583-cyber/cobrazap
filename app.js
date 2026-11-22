@@ -1,4 +1,12 @@
-const FREE_DEBTS = 5, FREE_SENDS = 10;
+const FREE_DEBTS = 5, FREE_SENDS = 10, PRO_PRICE = 18, OWNER_WA = '34691465432', CODE_SALT = 'cz-9f3a71b2e4';
+function cyrb53(s) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+const proCode = (device, month) => String(cyrb53(CODE_SALT + device + month) % 100000000).padStart(8, '0');
 const TEMPLATES = {
   amable: 'Hola {cliente} 👋, te escribe {negocio}. Un recordatorio amable: tienes pendiente {monto} por {concepto}, con vencimiento {vence}.\n\nPuedes pagar por:\n{pago}\n\n¡Gracias!',
   firme: 'Hola {cliente}, de {negocio}. Tu pago de {monto} por {concepto} venció el {vence}. Por favor regularízalo hoy.\n\nDatos de pago:\n{pago}',
@@ -15,6 +23,8 @@ let costs = load('costs', []);
 let settings = load('settings', { business: '', pm: '', other: '', cc: '58', tpl: 'amable', tpls: {...TEMPLATES}, rate: 0, pro: false });
 let sends = load('sends', { month: '', n: 0 });
 let editing = null, sending = null;
+if (!settings.deviceId) { settings.deviceId = Array.from(crypto.getRandomValues(new Uint8Array(3)), b => b.toString(16).padStart(2, '0')).join('').toUpperCase(); save('settings', settings); }
+const isPro = () => !!settings.proUntil && settings.proUntil >= new Date().toISOString().slice(0, 10);
 
 const today = () => new Date().toISOString().slice(0, 10);
 const rate = () => Number(settings.rate) || 0;
@@ -99,9 +109,9 @@ function render() {
   const f = $('filter').value, q = $('search').value.trim().toLowerCase();
   const list = debts.filter(d => (f === 'all' || status(d) === f || (f === 'pending' && !d.paid)) && (!q || (d.client + ' ' + d.concept).toLowerCase().includes(q))).sort((a, b) => a.due.localeCompare(b.due));
   $('debt-list').innerHTML = list.length ? list.map(row).join('') : '<li class="empty">Aún no tienes deudas aquí. Agrega la primera.</li>';
-  $('plan-info').textContent = settings.pro ? 'Plan Pro: sin límites.' : `Plan gratis: ${act.length}/${FREE_DEBTS} deudas activas · ${sendsUsed()}/${FREE_SENDS} envíos este mes.`;
-  $('plan-state').textContent = settings.pro ? 'Pro activo.' : 'Plan gratis (5 deudas activas y 10 envíos/mes).';
-  $('btn-pro').textContent = settings.pro ? 'Volver a plan gratis' : 'Activar Pro';
+  $('plan-info').textContent = isPro() ? ('Plan Pro: sin límites hasta ' + settings.proUntil + '.') : `Plan gratis: ${act.length}/${FREE_DEBTS} deudas activas · ${sendsUsed()}/${FREE_SENDS} envíos este mes.`;
+  $('plan-state').textContent = isPro() ? ('Pro activo hasta ' + settings.proUntil + '.') : 'Plan gratis (5 deudas activas y 10 envíos/mes).';
+  $('device-id').textContent = settings.deviceId;
   renderCosts(); renderPrices(); renderWeek();
 }
 function renderWeek() {
@@ -127,7 +137,7 @@ document.addEventListener('click', e => {
   const d = debts.find(x => x.id === b.dataset.id);
   if (b.dataset.a === 'send') {
     if (!settings.pm && !settings.other) { toast('Primero agrega tus datos de pago en Ajustes'); return showTab('settings'); }
-    if (!settings.pro && sendsUsed() >= FREE_SENDS) return paywall('Llegaste a 10 envíos este mes.');
+    if (!isPro() && sendsUsed() >= FREE_SENDS) return paywall('Llegaste a 10 envíos este mes.');
     sending = d;
     $('send-text').value = buildMessage(d);
     updateLink(); $('dlg-send').showModal();
@@ -167,7 +177,7 @@ function openDebt(d) {
   $('dlg-debt').showModal();
 }
 $('btn-new-debt').onclick = () => {
-  if (!settings.pro && debts.filter(d => !d.paid).length >= FREE_DEBTS) return paywall('Llegaste a 5 deudas activas.');
+  if (!isPro() && debts.filter(d => !d.paid).length >= FREE_DEBTS) return paywall('Llegaste a 5 deudas activas.');
   openDebt(null);
 };
 $('d-cancel').onclick = () => $('dlg-debt').close();
@@ -255,7 +265,17 @@ $('rate').addEventListener('input', () => {
 });
 $('btn-rate').onclick = () => fetchRate(true);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) fetchRate(); });
-$('btn-pro').onclick = () => { settings.pro = !settings.pro; save('settings', settings); render(); toast(settings.pro ? 'Pro activado (modo prueba, sin pago)' : 'Plan gratis'); };
+$('btn-buy-pro').onclick = () => {
+  const msg = `Hola, quiero activar CobraZap Pro (${'$' + PRO_PRICE}/mes). Mi ID de dispositivo: ${settings.deviceId}. Envíame los datos de pago.`;
+  window.open(`https://wa.me/${OWNER_WA}?text=${encodeURIComponent(msg)}`, '_blank');
+};
+$('btn-activate').onclick = () => {
+  const code = $('pro-code').value.replace(/\D/g, '');
+  const month = new Date().toISOString().slice(0, 7);
+  if (code !== proCode(settings.deviceId, month)) return toast('Código inválido o de otro mes');
+  settings.proUntil = new Date(Date.now() + 31 * 864e5).toISOString().slice(0, 10);
+  save('settings', settings); $('pro-code').value = ''; render(); toast('Pro activado hasta ' + settings.proUntil);
+};
 $('btn-export').onclick = () => {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify({ debts, prices, costs, settings }, null, 2)], { type: 'application/json' }));
