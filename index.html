@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#128c7e">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+<title>CobraZap</title>
+</head>
+<body>
+<header>
+  <h1>CobraZap</h1>
+  <div class="rate">Tasa: <input id="rate" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Bs por USD"></div>
+</header>
+
+<main>
+  <section id="tab-panel" class="tab active">
+    <div class="cards">
+      <div class="card"><span>Por cobrar</span><b id="sum-pending">$0</b></div>
+      <div class="card warn"><span>Vencido</span><b id="sum-overdue">$0</b></div>
+      <div class="card ok"><span>Cobrado</span><b id="sum-paid">$0</b></div>
+    </div>
+    <h2>Vencen hoy o ya vencidas</h2>
+    <ul id="due-list" class="list"></ul>
+  </section>
+
+  <section id="tab-debts" class="tab">
+    <div class="row">
+      <select id="filter">
+        <option value="pending">Pendientes</option>
+        <option value="overdue">Vencidas</option>
+        <option value="paid">Pagadas</option>
+        <option value="all">Todas</option>
+      </select>
+      <button id="btn-new-debt" class="primary">+ Nueva deuda</button>
+    </div>
+    <ul id="debt-list" class="list"></ul>
+    <p class="muted" id="plan-info"></p>
+  </section>
+
+  <section id="tab-price" class="tab">
+    <h2>Calculadora de precios</h2>
+    <p class="muted">Calcula a cuánto vender para ganar lo que quieres, en USD y Bs.</p>
+    <label>Producto o servicio <input id="p-name" placeholder="Ej: Torta de chocolate"></label>
+    <h3>Costos por unidad (USD)</h3>
+    <ul id="cost-list" class="list"></ul>
+    <div class="row">
+      <input id="c-name" placeholder="Ingrediente / costo">
+      <input id="c-val" type="number" step="0.01" min="0" inputmode="decimal" placeholder="USD">
+      <button id="btn-add-cost">Añadir</button>
+    </div>
+    <label>Ganancia deseada (%) <input id="p-margin" type="number" min="0" max="95" value="40" inputmode="decimal"></label>
+    <label>Comisión/gastos extra sobre la venta (%) <input id="p-fee" type="number" min="0" max="50" value="0" inputmode="decimal"></label>
+    <div class="result" id="price-result"></div>
+    <button id="btn-share-price" class="primary">Compartir precio por WhatsApp</button>
+    <h3>Lista de precios guardada</h3>
+    <ul id="price-list" class="list"></ul>
+  </section>
+
+  <section id="tab-settings" class="tab">
+    <h2>Mi negocio</h2>
+    <label>Nombre del negocio <input id="s-business"></label>
+    <label>Pago Móvil (banco, cédula, teléfono) <textarea id="s-pm" rows="2"></textarea></label>
+    <label>Zelle / otros <textarea id="s-other" rows="2"></textarea></label>
+    <label>Código de país <input id="s-cc" value="58" inputmode="numeric"></label>
+    <h3>Plantilla de cobro</h3>
+    <select id="s-tpl"></select>
+    <textarea id="s-tpl-text" rows="5"></textarea>
+    <p class="muted">Variables: {cliente} {monto} {concepto} {vence} {negocio} {pago}</p>
+    <button id="btn-save-settings" class="primary">Guardar</button>
+    <h3>Plan</h3>
+    <p id="plan-state" class="muted"></p>
+    <button id="btn-pro">Activar Pro</button>
+    <button id="btn-export">Exportar respaldo</button>
+  </section>
+</main>
+
+<dialog id="dlg-debt">
+  <form method="dialog" id="form-debt">
+    <h2 id="debt-title">Nueva deuda</h2>
+    <label>Cliente <input id="d-client" required></label>
+    <label>Teléfono <input id="d-phone" required inputmode="tel" placeholder="0414 1234567"></label>
+    <label>Concepto <input id="d-concept" placeholder="Ej: Diseño de logo"></label>
+    <div class="row">
+      <input id="d-amount" type="number" step="0.01" min="0.01" required inputmode="decimal" placeholder="Monto">
+      <select id="d-cur"><option>USD</option><option>Bs</option></select>
+    </div>
+    <label>Vence <input id="d-due" type="date" required></label>
+    <label>Repetir <select id="d-repeat"><option value="">No</option><option value="monthly">Cada mes</option></select></label>
+    <label>Promesa de pago (opcional) <input id="d-promise" type="date"></label>
+    <div class="row">
+      <button type="button" id="d-cancel">Cancelar</button>
+      <button type="submit" class="primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-send">
+  <h2>Enviar cobro</h2>
+  <textarea id="send-text" rows="8"></textarea>
+  <div class="row">
+    <button id="send-cancel">Cerrar</button>
+    <a id="send-link" class="btn primary" target="_blank" rel="noopener">Abrir WhatsApp</a>
+  </div>
+</dialog>
+
+<nav>
+  <button data-tab="panel" class="active">Panel</button>
+  <button data-tab="debts">Cobros</button>
+  <button data-tab="price">Precios</button>
+  <button data-tab="settings">Ajustes</button>
+</nav>
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
