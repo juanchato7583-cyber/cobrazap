@@ -18,14 +18,17 @@ let editing = null, sending = null;
 
 const today = () => new Date().toISOString().slice(0, 10);
 const rate = () => Number(settings.rate) || 0;
-const usd = d => d.cur === 'USD' ? d.amount : (rate() ? d.amount / rate() : 0);
+const rem = d => Math.max(0, d.amount - (d.paidAmount || 0));
+const usd = d => d.cur === 'USD' ? rem(d) : (rate() ? rem(d) / rate() : 0);
+const usdPaid = d => { const p = d.paid ? d.amount : (d.paidAmount || 0); return d.cur === 'USD' ? p : (rate() ? p / rate() : 0); };
 const fmtUsd = n => '$' + n.toLocaleString('es-VE', { maximumFractionDigits: 2 });
 const fmtBs = n => 'Bs ' + n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const status = d => d.paid ? 'paid' : (d.due < today() ? 'overdue' : 'pending');
 
 function money(d) {
-  if (d.cur === 'USD') return fmtUsd(d.amount) + (rate() ? ` (${fmtBs(d.amount * rate())})` : '');
-  return fmtBs(d.amount) + (rate() ? ` (${fmtUsd(d.amount / rate())})` : '');
+  const a = d.paid ? d.amount : rem(d);
+  if (d.cur === 'USD') return fmtUsd(a) + (rate() ? ` (${fmtBs(a * rate())})` : '');
+  return fmtBs(a) + (rate() ? ` (${fmtUsd(a / rate())})` : '');
 }
 function normPhone(p) {
   let n = String(p).replace(/\D/g, '').replace(/^0+/, '');
@@ -42,11 +45,11 @@ function render() {
   const sum = f => debts.filter(f).reduce((a, d) => a + usd(d), 0);
   $('sum-pending').textContent = fmtUsd(sum(d => !d.paid));
   $('sum-overdue').textContent = fmtUsd(sum(d => status(d) === 'overdue'));
-  $('sum-paid').textContent = fmtUsd(sum(d => d.paid));
+  $('sum-paid').textContent = fmtUsd(debts.reduce((a, d) => a + usdPaid(d), 0));
   const due = act.filter(d => d.due <= today() || d.promise === today()).sort((a, b) => a.due.localeCompare(b.due));
   $('due-list').innerHTML = due.length ? due.map(row).join('') : '<li class="empty">Nada por cobrar hoy 🎉</li>';
-  const f = $('filter').value;
-  const list = debts.filter(d => f === 'all' || status(d) === f || (f === 'pending' && !d.paid)).sort((a, b) => a.due.localeCompare(b.due));
+  const f = $('filter').value, q = $('search').value.trim().toLowerCase();
+  const list = debts.filter(d => (f === 'all' || status(d) === f || (f === 'pending' && !d.paid)) && (!q || (d.client + ' ' + d.concept).toLowerCase().includes(q))).sort((a, b) => a.due.localeCompare(b.due));
   $('debt-list').innerHTML = list.length ? list.map(row).join('') : '<li class="empty">Aún no tienes deudas aquí. Agrega la primera.</li>';
   $('plan-info').textContent = settings.pro ? 'Plan Pro: sin límites.' : `Plan gratis: ${act.length}/${FREE_DEBTS} deudas activas · ${sendsUsed()}/${FREE_SENDS} envíos este mes.`;
   $('plan-state').textContent = settings.pro ? 'Pro activo.' : 'Plan gratis (5 deudas activas y 10 envíos/mes).';
@@ -58,7 +61,7 @@ function row(d) {
   const lbl = { pending: 'Pendiente', overdue: 'Vencida', paid: 'Pagada' }[st];
   return `<li><div class="top"><b>${esc(d.client)}</b><b>${esc(money(d))}</b></div>
   <div class="meta">${esc(d.concept || 'Sin concepto')} · vence ${esc(d.due)} <span class="badge ${st}">${lbl}</span>${d.repeat ? ' 🔁' : ''}${d.promise ? ' · promesa ' + esc(d.promise) : ''}${d.sent ? ' · enviados ' + d.sent : ''}</div>
-  <div class="acts">${d.paid ? '' : `<button data-a="send" data-id="${d.id}">Cobrar</button><button data-a="paid" data-id="${d.id}">Marcar pagada</button><button data-a="edit" data-id="${d.id}">Editar</button>`}<button data-a="del" data-id="${d.id}">Borrar</button></div></li>`;
+  <div class="acts">${d.paid ? '' : `<button data-a="send" data-id="${d.id}">Cobrar</button><button data-a="part" data-id="${d.id}">Abonar</button><button data-a="paid" data-id="${d.id}">Marcar pagada</button><button data-a="edit" data-id="${d.id}">Editar</button>`}<button data-a="del" data-id="${d.id}">Borrar</button></div></li>`;
 }
 
 function buildMessage(d) {
@@ -77,9 +80,16 @@ document.addEventListener('click', e => {
     $('send-text').value = buildMessage(d);
     updateLink(); $('dlg-send').showModal();
   } else if (b.dataset.a === 'paid') {
-    d.paid = true; d.paidAt = today();
-    if (d.repeat === 'monthly') debts.push({ ...d, id: crypto.randomUUID(), paid: false, paidAt: null, due: addMonth(d.due), promise: '', sent: 0 });
+    d.paid = true; d.paidAt = today(); d.paidAmount = d.amount;
+    if (d.repeat === 'monthly') debts.push({ ...d, id: crypto.randomUUID(), paid: false, paidAt: null, paidAmount: 0, due: addMonth(d.due), promise: '', sent: 0 });
     save('debts', debts); render(); toast('Marcada como pagada');
+  } else if (b.dataset.a === 'part') {
+    const sym = d.cur === 'USD' ? '$' : 'Bs';
+    const v = parseFloat(String(prompt(`¿Cuánto abonó ${d.client}? (${sym}) Pendiente: ${rem(d)}`) || '').replace(',', '.'));
+    if (!(v > 0)) return;
+    d.paidAmount = (d.paidAmount || 0) + v;
+    if (d.paidAmount >= d.amount) { b.dataset.a = 'paid'; d.paidAmount = d.amount; d.paid = true; d.paidAt = today(); if (d.repeat === 'monthly') debts.push({ ...d, id: crypto.randomUUID(), paid: false, paidAt: null, paidAmount: 0, due: addMonth(d.due), promise: '', sent: 0 }); }
+    save('debts', debts); render(); toast(d.paid ? 'Deuda saldada' : 'Abono registrado');
   } else if (b.dataset.a === 'del') {
     if (confirm('¿Borrar esta deuda?')) { debts = debts.filter(x => x !== d); save('debts', debts); render(); }
   } else if (b.dataset.a === 'edit') openDebt(d);
@@ -115,11 +125,12 @@ $('form-debt').addEventListener('submit', () => {
     repeat: $('d-repeat').value, promise: $('d-promise').value
   };
   if (!data.client || !(data.amount > 0) || normPhone(data.phone).length < 10) return toast('Revisa nombre, monto y teléfono');
-  if (editing) Object.assign(editing, data);
-  else debts.push({ id: crypto.randomUUID(), paid: false, sent: 0, ...data });
+  if (editing) { Object.assign(editing, data); if ((editing.paidAmount || 0) >= editing.amount) { editing.paid = true; editing.paidAmount = editing.amount; editing.paidAt = today(); } }
+  else debts.push({ id: crypto.randomUUID(), paid: false, paidAmount: 0, sent: 0, ...data });
   save('debts', debts); render(); toast('Guardado');
 });
 $('filter').onchange = render;
+$('search').addEventListener('input', render);
 
 function renderCosts() {
   $('cost-list').innerHTML = costs.length ? costs.map((c, i) => `<li><div class="top"><span>${esc(c.name)}</span><span>${fmtUsd(c.val)} <button data-c="${i}" class="rmcost">✕</button></span></div></li>`).join('') : '<li class="empty">Añade tus costos</li>';
