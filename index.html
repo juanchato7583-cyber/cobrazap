@@ -26,6 +26,9 @@
       <div class="card warn"><span>Vencido</span><b id="sum-overdue">$0</b></div>
       <div class="card ok"><span>Cobrado</span><b id="sum-paid">$0</b></div>
     </div>
+    <h2>Resumen semanal</h2>
+    <div class="result" id="week-box"></div>
+    <button id="btn-week">Compartir resumen por WhatsApp</button>
     <h2>Vencen hoy o ya vencidas</h2>
     <ul id="due-list" class="list"></ul>
   </section>
@@ -75,6 +78,7 @@
     <textarea id="s-tpl-text" rows="5"></textarea>
     <p class="muted">Variables: {cliente} {monto} {concepto} {vence} {negocio} {pago}</p>
     <button id="btn-save-settings" class="primary">Guardar</button>
+    <div class="row"><button id="btn-share-pay">Compartir mis datos de pago</button><button id="btn-copy-pay">Copiar</button></div>
     <h3>Plan</h3>
     <p id="plan-state" class="muted"></p>
     <button id="btn-pro">Activar Pro</button>
@@ -100,6 +104,13 @@
       <button type="submit" class="primary">Guardar</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="dlg-hist">
+  <h2 id="hist-title"></h2>
+  <p class="muted" id="hist-summary"></p>
+  <ul id="hist-list" class="list"></ul>
+  <button id="hist-close">Cerrar</button>
 </dialog>
 
 <dialog id="dlg-send">

@@ -40,6 +40,54 @@ function sendsUsed() { const m = today().slice(0, 7); if (sends.month !== m) { s
 function addMonth(iso) { const d = new Date(iso + 'T12:00:00'); d.setMonth(d.getMonth() + 1); return d.toISOString().slice(0, 10); }
 function paywall(msg) { toast(msg + ' Activa Pro en Ajustes.'); }
 
+function logPay(d, amount) {
+  if (!(amount > 0)) return;
+  if (!d.payments) d.payments = [];
+  d.payments.push({ date: today(), amount });
+}
+function showHistory(d) {
+  const key = normPhone(d.phone);
+  const all = debts.filter(x => normPhone(x.phone) === key).sort((a, b) => b.due.localeCompare(a.due));
+  const owed = all.reduce((a, x) => a + (x.paid ? 0 : usd(x)), 0);
+  const paid = all.reduce((a, x) => a + usdPaid(x), 0);
+  $('hist-title').textContent = 'Historial de ' + d.client;
+  $('hist-summary').textContent = `Debe ahora: ${fmtUsd(owed)}${rate() ? ' · ' + fmtBs(owed * rate()) : ''} — Ha pagado: ${fmtUsd(paid)}`;
+  $('hist-list').innerHTML = all.map(x => {
+    const pays = (x.payments || []).map(p => `${esc(p.date)}: ${p.amount} ${x.cur === 'USD' ? '$' : 'Bs'}`).join(' · ');
+    const lbl = { pending: 'Pendiente', overdue: 'Vencida', paid: 'Pagada' }[status(x)];
+    return `<li><div class="top"><b>${esc(x.concept || 'Sin concepto')}</b><b>${x.cur === 'USD' ? fmtUsd(x.amount) : fmtBs(x.amount)}</b></div><div class="meta">vence ${esc(x.due)} · ${lbl}${pays ? '<br>Pagos: ' + pays : ''}</div></li>`;
+  }).join('');
+  $('dlg-hist').showModal();
+}
+$('hist-close').onclick = () => $('dlg-hist').close();
+
+function weekStats() {
+  const from = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+  let collected = 0, count = 0;
+  debts.forEach(d => (d.payments || []).forEach(p => {
+    if (p.date >= from) { count++; collected += d.cur === 'USD' ? p.amount : (rate() ? p.amount / rate() : 0); }
+  }));
+  const overdue = debts.filter(d => status(d) === 'overdue');
+  return { collected, count, overdueN: overdue.length, overdueUsd: overdue.reduce((a, d) => a + usd(d), 0) };
+}
+function weekText() {
+  const w = weekStats(), r = rate();
+  return `*Resumen semanal${settings.business ? ' · ' + settings.business : ''}*\nCobrado: ${fmtUsd(w.collected)}${r ? ' (' + fmtBs(w.collected * r) + ')' : ''} en ${w.count} pago(s)\nVencido: ${w.overdueN} deuda(s) por ${fmtUsd(w.overdueUsd)}${r ? ' (' + fmtBs(w.overdueUsd * r) + ')' : ''}`;
+}
+$('btn-week').onclick = () => window.open('https://wa.me/?text=' + encodeURIComponent(weekText()), '_blank');
+
+function payText() {
+  return [settings.business && '*' + settings.business + '*', 'Datos para pagar:', settings.pm && 'Pago Móvil: ' + settings.pm, settings.other].filter(Boolean).join('\n');
+}
+$('btn-share-pay').onclick = () => {
+  if (!settings.pm && !settings.other) return toast('Primero escribe tus datos de pago y guarda');
+  window.open('https://wa.me/?text=' + encodeURIComponent(payText()), '_blank');
+};
+$('btn-copy-pay').onclick = async () => {
+  if (!settings.pm && !settings.other) return toast('Primero escribe tus datos de pago y guarda');
+  try { await navigator.clipboard.writeText(payText()); toast('Datos copiados'); } catch { toast('No se pudo copiar'); }
+};
+
 function render() {
   const act = debts.filter(d => !d.paid);
   const sum = f => debts.filter(f).reduce((a, d) => a + usd(d), 0);
@@ -54,14 +102,18 @@ function render() {
   $('plan-info').textContent = settings.pro ? 'Plan Pro: sin límites.' : `Plan gratis: ${act.length}/${FREE_DEBTS} deudas activas · ${sendsUsed()}/${FREE_SENDS} envíos este mes.`;
   $('plan-state').textContent = settings.pro ? 'Pro activo.' : 'Plan gratis (5 deudas activas y 10 envíos/mes).';
   $('btn-pro').textContent = settings.pro ? 'Volver a plan gratis' : 'Activar Pro';
-  renderCosts(); renderPrices();
+  renderCosts(); renderPrices(); renderWeek();
+}
+function renderWeek() {
+  const w = weekStats(), r = rate();
+  $('week-box').innerHTML = `Cobrado (7 días): <b>${fmtUsd(w.collected)}</b>${r ? ' · ' + fmtBs(w.collected * r) : ''}<br>Vencido: <b>${w.overdueN}</b> deuda(s) por ${fmtUsd(w.overdueUsd)}`;
 }
 function row(d) {
   const st = status(d);
   const lbl = { pending: 'Pendiente', overdue: 'Vencida', paid: 'Pagada' }[st];
   return `<li><div class="top"><b>${esc(d.client)}</b><b>${esc(money(d))}</b></div>
   <div class="meta">${esc(d.concept || 'Sin concepto')} · vence ${esc(d.due)} <span class="badge ${st}">${lbl}</span>${d.repeat ? ' 🔁' : ''}${d.promise ? ' · promesa ' + esc(d.promise) : ''}${d.sent ? ' · enviados ' + d.sent : ''}</div>
-  <div class="acts">${d.paid ? '' : `<button data-a="send" data-id="${d.id}">Cobrar</button><button data-a="part" data-id="${d.id}">Abonar</button><button data-a="paid" data-id="${d.id}">Marcar pagada</button><button data-a="edit" data-id="${d.id}">Editar</button>`}<button data-a="del" data-id="${d.id}">Borrar</button></div></li>`;
+  <div class="acts">${d.paid ? '' : `<button data-a="send" data-id="${d.id}">Cobrar</button><button data-a="part" data-id="${d.id}">Abonar</button><button data-a="paid" data-id="${d.id}">Marcar pagada</button><button data-a="edit" data-id="${d.id}">Editar</button>`}<button data-a="hist" data-id="${d.id}">Historial</button><button data-a="del" data-id="${d.id}">Borrar</button></div></li>`;
 }
 
 function buildMessage(d) {
@@ -80,19 +132,20 @@ document.addEventListener('click', e => {
     $('send-text').value = buildMessage(d);
     updateLink(); $('dlg-send').showModal();
   } else if (b.dataset.a === 'paid') {
-    d.paid = true; d.paidAt = today(); d.paidAmount = d.amount;
-    if (d.repeat === 'monthly') debts.push({ ...d, id: crypto.randomUUID(), paid: false, paidAt: null, paidAmount: 0, due: addMonth(d.due), promise: '', sent: 0 });
+    logPay(d, rem(d)); d.paid = true; d.paidAt = today(); d.paidAmount = d.amount;
+    if (d.repeat === 'monthly') debts.push({ ...d, id: crypto.randomUUID(), paid: false, paidAt: null, paidAmount: 0, payments: [], due: addMonth(d.due), promise: '', sent: 0 });
     save('debts', debts); render(); toast('Marcada como pagada');
   } else if (b.dataset.a === 'part') {
     const sym = d.cur === 'USD' ? '$' : 'Bs';
     const v = parseFloat(String(prompt(`¿Cuánto abonó ${d.client}? (${sym}) Pendiente: ${rem(d)}`) || '').replace(',', '.'));
     if (!(v > 0)) return;
-    d.paidAmount = (d.paidAmount || 0) + v;
-    if (d.paidAmount >= d.amount) { b.dataset.a = 'paid'; d.paidAmount = d.amount; d.paid = true; d.paidAt = today(); if (d.repeat === 'monthly') debts.push({ ...d, id: crypto.randomUUID(), paid: false, paidAt: null, paidAmount: 0, due: addMonth(d.due), promise: '', sent: 0 }); }
+    logPay(d, Math.min(v, rem(d))); d.paidAmount = (d.paidAmount || 0) + v;
+    if (d.paidAmount >= d.amount) { b.dataset.a = 'paid'; d.paidAmount = d.amount; d.paid = true; d.paidAt = today(); if (d.repeat === 'monthly') debts.push({ ...d, id: crypto.randomUUID(), paid: false, paidAt: null, paidAmount: 0, payments: [], due: addMonth(d.due), promise: '', sent: 0 }); }
     save('debts', debts); render(); toast(d.paid ? 'Deuda saldada' : 'Abono registrado');
   } else if (b.dataset.a === 'del') {
     if (confirm('¿Borrar esta deuda?')) { debts = debts.filter(x => x !== d); save('debts', debts); render(); }
   } else if (b.dataset.a === 'edit') openDebt(d);
+  else if (b.dataset.a === 'hist') showHistory(d);
 });
 function updateLink() {
   $('send-link').href = `https://wa.me/${normPhone(sending.phone)}?text=${encodeURIComponent($('send-text').value)}`;
