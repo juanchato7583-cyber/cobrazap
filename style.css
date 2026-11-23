@@ -38,3 +38,4 @@ dialog::backdrop{background:#0006}
 #toast.show{opacity:1}
 .empty{text-align:center;color:#5b6f68;padding:20px;background:#fff;border-radius:10px}
 .slogan{display:block;font-size:.7rem;opacity:.9}
+.brand{display:flex;align-items:center;gap:10px}.logo{width:42px;height:42px;border-radius:10px;background:#fff;padding:2px}
